@@ -1,6 +1,6 @@
-# Getting Started with Create React App
+# Gemini Chatbot
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A simple chatbot project using the Gemini API along with web search and calendar integrations.
 
 ## Available Scripts
 
@@ -68,3 +68,37 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+### File Tree
+```
+.
+├── README.md
+├── package-lock.json
+├── package.json
+├── public
+│   ├── favicon.ico
+│   ├── index.html
+│   ├── logo192.png
+│   ├── logo512.png
+│   ├── manifest.json
+│   └── robots.txt
+└── src
+    ├── App.css
+    ├── App.js
+    ├── App.test.js
+    ├── api
+    │   ├── geminiAPI.js
+    │   ├── googleCalendarAPI.js
+    │   └── webSearchAPI.js
+    ├── components
+    │   └── Chatbot.js
+    ├── context
+    │   └── ChatContext.js
+    ├── index.css
+    ├── index.js
+    ├── logo.svg
+    ├── reportWebVitals.js
+    ├── setupTests.js
+    └── styles
+        └── Chatbot.css
+```

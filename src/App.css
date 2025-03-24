@@ -13,6 +13,11 @@
   }
 }
 
+.h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
 .App-header {
   background-color: #282c34;
   min-height: 100vh;

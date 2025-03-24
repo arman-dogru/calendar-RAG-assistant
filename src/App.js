@@ -1,24 +1,18 @@
-import logo from './logo.svg';
-import './App.css';
+// src/App.js
+import React from 'react';
+import Chatbot from './components/Chatbot';
+import { ChatProvider } from './context/ChatContext';
+import './styles/Chatbot.css';
+
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <ChatProvider>
+      <div className="App">
+        <h1>BAKLAVA (Bot Assistant and Knowledge LLM Automation for Virtual Agenda) Bot </h1>
+        <Chatbot />
+      </div>
+    </ChatProvider>
   );
 }
 
