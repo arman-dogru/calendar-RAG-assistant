@@ -1,4 +1,4 @@
-// src/api/geminiAPI.js
+// geminiAPI.js
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -37,12 +37,20 @@ const buildPromptFromHistory = (chatHistory, newMessage) => {
 };
 
 /**
- * "in-memory" map of summary → eventId
+ * "in-memory" map of eventId → event details.
  *
  * Example:
  * knownEventsMap = {
- *   "making baklava": "11kbb0fvbko7a43itv32c19mo0",
- *   "baklava meeting": "ao9g5vqbp1732vio7iugce6l1k"
+ *   "11kbb0fvbko7a43itv32c19mo0": {
+ *       summary: "making baklava",
+ *       startTime: "2025-03-30T17:00:00-07:00",
+ *       userFriendlyIndex: 1
+ *   },
+ *   "ao9g5vqbp1732vio7iugce6l1k": {
+ *       summary: "baklava meeting",
+ *       startTime: "2025-03-30T18:00:00-07:00",
+ *       userFriendlyIndex: 2
+ *   }
  * };
  */
 let knownEventsMap = {};
@@ -57,13 +65,11 @@ let knownEventsMap = {};
  */
 const detectIntent = async (userPrompt, conversationContext) => {
   try {
-    // 1. Gather today's date/time in ISO
     const now = new Date();
-    const currentLocalISODate = now.toISOString().slice(0, 10); // e.g. "2025-03-29"
-    const hours = String(now.getHours()).padStart(2, "0");      // e.g. "09"
-    const minutes = String(now.getMinutes()).padStart(2, "0");  // e.g. "07"
+    const currentLocalISODate = now.toISOString().slice(0, 10);
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
 
-    // 2. Build a "memory note" listing known events
     let memoryNote = `Here is the list of known events. 
 The user may refer to them by index, time, date, or summary:
 `;
@@ -77,7 +83,6 @@ The user may refer to them by index, time, date, or summary:
           \n\n`;
     }
 
-    // 3. Build specialized system instructions, incorporating conversationContext
     const systemInstruction = `
 You are an intent classification system. 
 Today's date is ${currentLocalISODate}, and the current local time is ${hours}:${minutes}.
@@ -154,22 +159,17 @@ EXAMPLE OUTPUT:
 
 You will read the user prompt, then output a valid JSON object containing a key 'tasks' (an array of objects).
 Each object must have 'function' and 'parameters' fields.
-Do not include triple backticks (\`\`\`) or any extra text besides the JSON.
+Do not include triple backticks or any extra text besides the JSON.
 Return only valid JSON. Nothing else.
 `;
 
-    // 4. Combine systemInstruction + userPrompt
     const prompt = `${systemInstruction}\n\nUser prompt:\n${userPrompt}\n\nPlease output your JSON now:`;
 
-    // 5. Call Gemini
-    const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88"); // your key
+    const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88");
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent(prompt);
 
-    // 6. Extract the text from Gemini
     const geminiRawResponse = await result.response.text();
-
-    // 7. Look for a JSON code block
     const codeBlockRegex = /```json([\s\S]*?)```/i;
     const codeBlockMatch = geminiRawResponse.match(codeBlockRegex);
 
@@ -180,10 +180,8 @@ Return only valid JSON. Nothing else.
       jsonString = geminiRawResponse;
     }
 
-    // 8. Remove stray backticks
     jsonString = jsonString.replace(/`/g, "").trim();
 
-    // 9. Attempt to parse JSON
     let parsed;
     try {
       parsed = JSON.parse(jsonString);
@@ -193,7 +191,6 @@ Return only valid JSON. Nothing else.
       parsed = { tasks: [] };
     }
 
-    // 10. Ensure we have a tasks array
     if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
       parsed.tasks = [];
     }
@@ -208,7 +205,7 @@ Return only valid JSON. Nothing else.
 /**
  * Processes each task from the "tasks" array and
  * invokes the respective calendar or web search functions.
- * We update or read knownEventsMap as needed.
+ * Updates or reads knownEventsMap as needed.
  *
  * @param {Array<Object>} tasks - List of tasks specifying function and parameters
  * @returns {Promise<string>} - A summary text of the actions taken and their results
@@ -223,121 +220,68 @@ const workTasks = async (tasks) => {
         case "createEvent": {
           const { title, date, time } = parameters;
           const result = await createCalendarEvent(title, date, time);
-          resultsLog.push(`Created event "${title}" on ${date} at ${time}: ${result}`);
+          resultsLog.push(`Created event "${title}" on ${date} at ${time}: ${JSON.stringify(result)}`);
           break;
         }
-
         case "deleteEvent": {
           let { eventId, title } = parameters;
-        
-          // If eventId is not given, try to find it from the summary
           if (!eventId && title) {
-            // Option 1: an exact match on knownEventsMap if the user’s “title” is exactly the event’s summary
-            // (This is what you already do)
-            const summaryLower = title.toLowerCase();
-            if (knownEventsMap[summaryLower]) {
-              eventId = knownEventsMap[summaryLower];
-            } else {
-              // Option 2: partial matching if the user’s text is close but not exact
-              // e.g. user says “pistacio” but real summary is “group meeting for pistacios”
-              for (const [knownSummary, knownId] of Object.entries(knownEventsMap)) {
-                if (knownSummary.includes(summaryLower)) {
-                  eventId = knownId;
-                  break;
-                }
+            const lowerTitle = title.toLowerCase();
+            // Iterate through the knownEventsMap to find a match
+            for (const [evtId, details] of Object.entries(knownEventsMap)) {
+              if (details.summary.toLowerCase().includes(lowerTitle)) {
+                eventId = evtId;
+                break;
               }
             }
+            if (!eventId) {
+              throw new Error(`Cannot find an event matching "${title}"`);
+            }
           }
-        
-          if (!eventId) {
-            // If still not found, return an error or handle differently
-            throw new Error(`Cannot find an event matching "${title}"`);
-          }
-        
           const result = await deleteCalendarEvent(eventId);
           resultsLog.push(`Deleted event ${eventId}: ${result}`);
           break;
-        }        
-        
+        }
         case "updateEvent": {
-          // 1) If we only got a title from user (e.g. “pistacio event”), look up event ID from the knownEventsMap:
           if (!parameters.eventId && parameters.title) {
-            const summaryLower = parameters.title.toLowerCase();
-            parameters.eventId = knownEventsMap[summaryLower];
-          }
-        
-          // 2) Retrieve the existing event from Google Calendar if we need to fill missing info:
-          //    e.g., user only specified a new time, but no date or summary
-          const existingEvent = await getCalendarEventDetails(parameters.eventId);
-        
-          // existingEvent.start.dateTime might look like "2025-03-30T17:00:00-07:00" or just "2025-03-30T17:00:00Z".
-          // We can safely split on "T" to get the date portion if needed:
-        
-          // 3) Determine final date, time, and summary.
-          //    If user provided them, use them; else keep from existing event.
-          let finalTitle = parameters.title;
-          let finalDate  = parameters.date;
-          let finalTime  = parameters.time;
-        
-          // If user did NOT provide a new summary/title, default to the existing summary
-          if (!finalTitle) {
-            finalTitle = existingEvent.summary || "Untitled event";
-          }
-        
-          // If user did NOT provide a new date, parse the existing date from existingEvent.start.dateTime
-          if (!finalDate) {
-            const existingStartDT = existingEvent.start?.dateTime; 
-            if (existingStartDT) {
-              finalDate = existingStartDT.split("T")[0]; // e.g. "2025-03-30"
-            } else {
-              finalDate = "2025-01-01"; // fallback, or handle differently
+            const lowerTitle = parameters.title.toLowerCase();
+            for (const [evtId, details] of Object.entries(knownEventsMap)) {
+              if (details.summary.toLowerCase().includes(lowerTitle)) {
+                parameters.eventId = evtId;
+                break;
+              }
             }
           }
-        
-          // If user did NOT provide a new time, parse the existing time from existingEvent.start.dateTime
+          // Retrieve the existing event to fill missing details
+          const existingEvent = await getCalendarEventDetails(parameters.eventId);
+          let finalTitle = parameters.title || existingEvent.summary || "Untitled event";
+          let finalDate  = parameters.date || (existingEvent.start?.dateTime ? existingEvent.start.dateTime.split("T")[0] : "2025-01-01");
+          let finalTime  = parameters.time;
           if (!finalTime) {
             const existingStartDT = existingEvent.start?.dateTime;
             if (existingStartDT) {
-              // e.g. "2025-03-30T17:00:00-07:00"
-              // after splitting on "T" => "2025-03-30", "17:00:00-07:00"
-              // then split again on ":" => ["17","00","00-07","00"]
-              const timePart = existingStartDT.split("T")[1]; // "17:00:00-07:00"
-              finalTime = timePart.slice(0,5); // "17:00"
+              const timePart = existingStartDT.split("T")[1]; // e.g., "17:00:00-07:00"
+              finalTime = timePart.slice(0,5); // e.g., "17:00"
             } else {
-              finalTime = "09:00"; // fallback if truly missing
+              finalTime = "09:00";
             }
           }
-        
-          // 4) Now call your existing updateCalendarEvent with final merged info
-          const result = await updateCalendarEvent(
-            parameters.eventId,
-            finalTitle,
-            finalDate,
-            finalTime
-          );
-        
-          resultsLog.push(
-            `Updated event ${parameters.eventId} → summary "${finalTitle}", date ${finalDate} time ${finalTime}: ${result}`
-          );
+          const result = await updateCalendarEvent(parameters.eventId, finalTitle, finalDate, finalTime);
+          resultsLog.push(`Updated event ${parameters.eventId} → summary "${finalTitle}", date ${finalDate} time ${finalTime}: ${result}`);
           break;
-        }        
-
+        }
         case "getEvents": {
           const events = await getCalendarEvents();
           resultsLog.push(`Fetched calendar events: ${JSON.stringify(events)}`);
 
-          // Clear and rebuild our knownEventsMap
+          // Rebuild the knownEventsMap
           knownEventsMap = {};
-
-          // We'll also keep a simple counter so we can label them "1st event," "2nd event," etc.
           let eventIndex = 1;
-
           for (const evt of events) {
             const eventId = evt.id;
             const summary = evt.summary || "Untitled event";
             const start = evt.start?.dateTime || evt.start?.date;
-            const end   = evt.end?.dateTime   || evt.end?.date;
-
+            const end   = evt.end?.dateTime || evt.end?.date;
             knownEventsMap[eventId] = {
               summary,
               startTime: start,
@@ -348,74 +292,57 @@ const workTasks = async (tasks) => {
           }
           break;
         }
-
         case "getEventDetails": {
           const { eventId } = parameters;
           const result = await getCalendarEventDetails(eventId);
           resultsLog.push(`Fetched details for event ${eventId}: ${JSON.stringify(result)}`);
           break;
         }
-
         case "searchWeb": {
           const { query } = parameters;
           const result = await searchWeb(query);
           resultsLog.push(`Searched the web for "${query}": ${JSON.stringify(result)}`);
           break;
         }
-
         case "plainAnswer": {
           const { text } = parameters;
           resultsLog.push(`Plain answer to user: ${text}`);
           break;
         }
-
         default:
           resultsLog.push(`Unknown function "${funcName}". No action taken.`);
       }
     } catch (error) {
       console.error(`Error processing task "${funcName}":`, error);
-      resultsLog.push(
-        `Error in function "${funcName}" with parameters ${JSON.stringify(parameters)}: ${error.message}`
-      );
+      resultsLog.push(`Error in function "${funcName}" with parameters ${JSON.stringify(parameters)}: ${error.message}`);
     }
   }
 
-  // Combine all results into one text block
   return resultsLog.join("\n");
 };
 
 /**
  * Main function to handle the conversation with Baklava Bot:
- * 1. Build the prompt from the conversation (this is only for the final response).
- * 2. Detect user intent (pass the entire conversation history into detectIntent).
- * 3. Perform the tasks (if any).
- * 4. Generate the final reply, providing task results as part of the context.
+ * 1. Builds the prompt from conversation history.
+ * 2. Detects user intent.
+ * 3. Executes tasks.
+ * 4. Generates the final reply.
  */
 export const sendMessageToBaklava = async (chatHistory, newMessage) => {
   try {
-    // 1) Build a textual representation of the conversation so far,
-    //    to help with the final response.
     const basePrompt = buildPromptFromHistory(chatHistory, newMessage);
     console.log("Prompt to Gemini (base, for final answer):", basePrompt);
 
-    // 2) Also build a conversationContext string for intent detection
-    //    (it can be the same or a slightly different format if you like).
     let conversationContext = "";
     chatHistory.forEach((msg) => {
       conversationContext += `${msg.sender}: ${msg.text}\n`;
     });
-    // Optionally include the new message as well:
     conversationContext += `user: ${newMessage}\n`;
 
-    // 3) Get tasks by passing user’s new prompt + the entire conversation.
     const { tasks } = await detectIntent(newMessage, conversationContext);
-
-    // 4) Execute tasks (call calendar or web search functions, etc.)
     const taskResults = await workTasks(tasks);
     console.log("Tasks results:\n", taskResults);
 
-    // 5) Incorporate the tasks results into a final prompt for Gemini,
-    //    so the user sees a cohesive final answer.
     const finalPrompt = `
 ${basePrompt}
 System note: The following tasks were performed, if you need to use this information to help you craft your response, here are the results:
@@ -425,12 +352,10 @@ Now craft your final answer to the user. Remember to only reply in plain text (n
 
     console.log("Prompt to Gemini (final):", finalPrompt);
 
-    // 6) Make final call to Gemini with updated context
-    const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88"); // your key
+    const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88");
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent(finalPrompt);
 
-    // 7) Return the plain text result
     return await result.response.text();
   } catch (error) {
     console.error("Error in sendMessageToBaklava:", error);
