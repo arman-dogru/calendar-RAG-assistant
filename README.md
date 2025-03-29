@@ -82,6 +82,8 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 │   ├── logo512.png
 │   ├── manifest.json
 │   └── robots.txt
+├── server.js
+├── service-account-key.json
 └── src
     ├── App.css
     ├── App.js
@@ -91,7 +93,8 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
     │   ├── googleCalendarAPI.js
     │   └── webSearchAPI.js
     ├── components
-    │   └── Chatbot.js
+    │   ├── Chatbot.js
+    │   └── Login.js
     ├── context
     │   └── ChatContext.js
     ├── index.css
