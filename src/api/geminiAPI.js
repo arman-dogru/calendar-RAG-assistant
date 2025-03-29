@@ -24,18 +24,20 @@ const { searchWeb } = require("./webSearchAPI.js");
  */
 const buildPromptFromHistory = (chatHistory, newMessage) => {
   let prompt =
-    "You are Baklava Bot, a helpful virtual assistant." +
-    "Your job is to help users manage their schedules and appointments efficiently or answer questions by using your internal knowledge or looking up things online." +
-    "You only reply in plain text and no formatting of any type.\n";
+    "You are Baklava Bot, a helpful virtual assistant. " +
+    "Your job is to help users manage their schedules and appointments efficiently or answer questions by using your internal knowledge or looking up things online. " +
+    "You only reply in plain text and no formatting of any type.\n\n";
+
   chatHistory.forEach((msg) => {
     prompt += `${msg.sender}: ${msg.text}\n`;
   });
   prompt += `user: ${newMessage}\n`;
+
   return prompt;
 };
 
 /**
- * Store a simple "in-memory" map of summary → eventId
+ * "in-memory" map of summary → eventId
  *
  * Example:
  * knownEventsMap = {
@@ -48,8 +50,12 @@ let knownEventsMap = {};
 /**
  * Determines user intent and produces a list of tasks in JSON format.
  * Calls Gemini to analyze the user prompt and structure tasks accordingly.
+ * 
+ * @param {string} userPrompt - The user’s new message.
+ * @param {string} conversationContext - A string containing the entire conversation so far.
+ * @returns {Promise<Object>} - The parsed JSON object with tasks.
  */
-const detectIntent = async (userPrompt) => {
+const detectIntent = async (userPrompt, conversationContext) => {
   try {
     // 1. Gather today's date/time in ISO
     const now = new Date();
@@ -59,32 +65,29 @@ const detectIntent = async (userPrompt) => {
 
     // 2. Build a "memory note" listing known events
     let memoryNote = `Here is the list of known events. 
-    The user may refer to them by index, time, date, or summary:
-    `;
-
+The user may refer to them by index, time, date, or summary:
+`;
     for (const [evtId, details] of Object.entries(knownEventsMap)) {
       const index = details.userFriendlyIndex;
       const summary = details.summary;
       const startTime = details.startTime;
-      
-      // Example formatting
-      // "1) (ID = rq4v7atnabgkcv1keg5glt5sck) summary: 'group meeting for pistacios' 
-      //     starts at: 2025-03-30T17:00:00-07:00"
       memoryNote += `${index}) [ID: ${evtId}]
           summary: "${summary}"
           starts at: ${startTime}
           \n\n`;
     }
 
-
-    // 3. Build the specialized system instructions
+    // 3. Build specialized system instructions, incorporating conversationContext
     const systemInstruction = `
 You are an intent classification system. 
-Today’s date is ${currentLocalISODate}, and the current local time is ${hours}:${minutes}.
+Today's date is ${currentLocalISODate}, and the current local time is ${hours}:${minutes}.
 Any relative date/time references in the user prompt must be converted to valid ISO.
 
 KNOWN EVENTS (with indexes, IDs, times, summaries):
 ${memoryNote}
+
+CONVERSATION HISTORY:
+${conversationContext}
 
 The user may say things like:
 - "Change the second event to 6pm"
@@ -98,6 +101,7 @@ In all these cases, figure out which event they are referencing by summary, date
 - "2 pm" means "14:00".
 - If a user says "next Tuesday," find the date that is Tuesday after the current day, etc.
 - Output the final date in YYYY-MM-DD format, and time in HH:mm (24-hour) format.
+- If the user does not specify a date or time, use the current date or time.
 
 Available intents are: createEvent, deleteEvent, updateEvent, getEvents, getEventDetails, searchWeb, plainAnswer.
 
@@ -116,6 +120,21 @@ EXAMPLE OUTPUT:
       "function": "getEvents",
       "parameters": {
         "date": "2025-03-29"
+      }
+    },
+    {
+      "function": "deleteEvent",
+      "parameters": {
+        "eventId": "11kbb0fvbko7a43itv32c19mo0"
+      }
+    },
+    {
+      "function": "updateEvent",
+      "parameters": {
+        "eventId": "ao9g5vqbp1732vio7iugce6l1k",
+        "title": "Updated Event Title",
+        "date": "2025-03-30",
+        "time": "14:00"
       }
     },
     {
@@ -139,11 +158,11 @@ Do not include triple backticks (\`\`\`) or any extra text besides the JSON.
 Return only valid JSON. Nothing else.
 `;
 
-    // 4. Combine systemInstruction + user prompt
+    // 4. Combine systemInstruction + userPrompt
     const prompt = `${systemInstruction}\n\nUser prompt:\n${userPrompt}\n\nPlease output your JSON now:`;
 
     // 5. Call Gemini
-    const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88"); // Replace with your own key
+    const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88"); // your key
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent(prompt);
 
@@ -306,18 +325,19 @@ const workTasks = async (tasks) => {
         case "getEvents": {
           const events = await getCalendarEvents();
           resultsLog.push(`Fetched calendar events: ${JSON.stringify(events)}`);
-        
+
           // Clear and rebuild our knownEventsMap
           knownEventsMap = {};
-        
+
           // We'll also keep a simple counter so we can label them "1st event," "2nd event," etc.
           let eventIndex = 1;
-        
+
           for (const evt of events) {
             const eventId = evt.id;
             const summary = evt.summary || "Untitled event";
             const start = evt.start?.dateTime || evt.start?.date;
             const end   = evt.end?.dateTime   || evt.end?.date;
+
             knownEventsMap[eventId] = {
               summary,
               startTime: start,
@@ -327,7 +347,7 @@ const workTasks = async (tasks) => {
             eventIndex++;
           }
           break;
-        }        
+        }
 
         case "getEventDetails": {
           const { eventId } = parameters;
@@ -345,7 +365,6 @@ const workTasks = async (tasks) => {
 
         case "plainAnswer": {
           const { text } = parameters;
-          // Just log the plain text so the final response can incorporate it
           resultsLog.push(`Plain answer to user: ${text}`);
           break;
         }
@@ -367,39 +386,51 @@ const workTasks = async (tasks) => {
 
 /**
  * Main function to handle the conversation with Baklava Bot:
- * 1. Build the prompt from the conversation.
- * 2. Detect user intent (returns tasks in JSON).
+ * 1. Build the prompt from the conversation (this is only for the final response).
+ * 2. Detect user intent (pass the entire conversation history into detectIntent).
  * 3. Perform the tasks (if any).
  * 4. Generate the final reply, providing task results as part of the context.
  */
 export const sendMessageToBaklava = async (chatHistory, newMessage) => {
   try {
-    // 1) Build prompt from conversation
+    // 1) Build a textual representation of the conversation so far,
+    //    to help with the final response.
     const basePrompt = buildPromptFromHistory(chatHistory, newMessage);
-    console.log("Prompt to Gemini (base):", basePrompt);
+    console.log("Prompt to Gemini (base, for final answer):", basePrompt);
 
-    // 2) Get tasks from detectIntent
-    const { tasks } = await detectIntent(newMessage);
+    // 2) Also build a conversationContext string for intent detection
+    //    (it can be the same or a slightly different format if you like).
+    let conversationContext = "";
+    chatHistory.forEach((msg) => {
+      conversationContext += `${msg.sender}: ${msg.text}\n`;
+    });
+    // Optionally include the new message as well:
+    conversationContext += `user: ${newMessage}\n`;
 
-    // 3) Execute tasks (call calendar or web search functions, etc.)
+    // 3) Get tasks by passing user’s new prompt + the entire conversation.
+    const { tasks } = await detectIntent(newMessage, conversationContext);
+
+    // 4) Execute tasks (call calendar or web search functions, etc.)
     const taskResults = await workTasks(tasks);
     console.log("Tasks results:\n", taskResults);
 
-    // 4) Incorporate the tasks results into a final prompt for Gemini
+    // 5) Incorporate the tasks results into a final prompt for Gemini,
+    //    so the user sees a cohesive final answer.
     const finalPrompt = `
 ${basePrompt}
-System note: The following tasks were performed, if you need use the following information to help you craft your response, and here are the results:
+System note: The following tasks were performed, if you need to use this information to help you craft your response, here are the results:
 ${taskResults}
-Now craft your final answer to the user. Remember to only reply in plain text (no formatting).`;
+Now craft your final answer to the user. Remember to only reply in plain text (no formatting).
+`;
 
     console.log("Prompt to Gemini (final):", finalPrompt);
 
-    // 5) Make final call to Gemini with updated context
+    // 6) Make final call to Gemini with updated context
     const genAI = new GoogleGenerativeAI("AIzaSyDsFwcze7fmXP5IEpnMfsv7KpEdPHB2L88"); // your key
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent(finalPrompt);
 
-    // 6) Return the plain text result
+    // 7) Return the plain text result
     return await result.response.text();
   } catch (error) {
     console.error("Error in sendMessageToBaklava:", error);

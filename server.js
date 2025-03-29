@@ -51,7 +51,6 @@ app.get('/api/calendar/events/:eventId', async (req, res) => {
   }
 });
 
-
 // GET events
 app.get('/api/calendar/events', async (req, res) => {
   try {
