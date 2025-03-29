@@ -1,75 +1,110 @@
 // src/api/googleCalendarAPI.js
-
-/**
- * Retrieves a list of calendar events.
- * @returns {Promise<any>} A promise that resolves with calendar events or a placeholder message.
- */
 export const getCalendarEvents = async () => {
-  // Placeholder: Simulate fetching Google Calendar events
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve("Here are the events for today: GYM at 9 AM, Baklava Bot Developper meeting 10 AM, All hands meeting with shareholders 11 AM, Baklava eating session at Noon...");
-    }, 1000);
-  });
+  // Make a request to your Node server’s endpoint:
+  try {
+    const response = await fetch('http://localhost:3001/api/calendar/events', {
+      credentials: 'include', // Important for sending session cookies
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch calendar events');
+    }
+
+    const events = await response.json();
+    // Return them or handle as needed
+    return events;
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    throw error;
+  }
 };
 
-/**
- * Creates a new calendar event with the specified title, date, and time.
- * @param {string} title - The title of the event.
- * @param {string} date - The date of the event (e.g., YYYY-MM-DD).
- * @param {string} time - The time of the event (e.g., HH:mm).
- * @returns {Promise<any>} A promise that resolves with success message or a placeholder message.
- */
 export const createCalendarEvent = async (title, date, time) => {
-  // Placeholder: Simulate creating a Google Calendar event
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve("Calendar event created for " + title + " on " + date + " at " + time);
-    }, 1000);
-  });
+  // Example: date/time can be merged into an ISO string if you want
+  // a single dateTime field. This is flexible, but you have to
+  // ensure the backend’s format matches the calendar insert request.
+  const startDateTime = `${date}T${time}:00`; // e.g. "2023-04-01T14:00:00"
+  const endDateTime = `${date}T${parseInt(time, 10) + 1}:00:00`;
+
+  try {
+    const response = await fetch('http://localhost:3001/api/calendar/events', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: title,
+        startDateTime,
+        endDateTime
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create calendar event');
+    }
+
+    const newEvent = await response.json();
+    return newEvent; // or some message string
+  } catch (error) {
+    console.error('Error creating event:', error);
+    throw error;
+  }
 };
 
-/**
- * Deletes a calendar event by its unique event identifier.
- * @param {string} eventId - The unique ID of the event to be deleted.
- * @returns {Promise<any>} A promise that resolves with success message or a placeholder message.
- */
 export const deleteCalendarEvent = async (eventId) => {
-  // Placeholder: Simulate deleting a Google Calendar event
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve("Calendar event deleted: " + eventId);
-    }, 1000);
-  });
+  try {
+    // Implement a DELETE route in your server for /api/calendar/events/:eventId
+    const response = await fetch(`http://localhost:3001/api/calendar/events/${eventId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete event');
+    }
+    return 'Event deleted successfully!';
+  } catch (error) {
+    console.error('Error deleting event:', error);
+    throw error;
+  }
 };
 
-/**
- * Updates an existing calendar event by its unique event identifier.
- * @param {string} eventId - The unique ID of the event to update.
- * @param {string} title - The updated title of the event.
- * @param {string} date - The updated date of the event (YYYY-MM-DD).
- * @param {string} time - The updated time of the event (HH:mm).
- * @returns {Promise<any>} A promise that resolves with success message or a placeholder message.
- */
 export const updateCalendarEvent = async (eventId, title, date, time) => {
-  // Placeholder: Simulate updating a Google Calendar event
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve("Calendar event updated for " + title + " on " + date + " at " + time);
-    }, 1000);
-  });
+  try {
+    // Similarly, you’d implement a PATCH route or PUT route to your server.
+    const startDateTime = `${date}T${time}:00`;
+    const endDateTime = `${date}T${parseInt(time, 10) + 1}:00:00`;
+
+    const response = await fetch(`http://localhost:3001/api/calendar/events/${eventId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: title,
+        startDateTime,
+        endDateTime
+      })
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update event');
+    }
+    return 'Event updated successfully!';
+  } catch (error) {
+    console.error('Error updating event:', error);
+    throw error;
+  }
 };
 
-/**
- * Retrieves detailed information for a specific calendar event by its unique ID.
- * @param {string} eventId - The unique ID of the event to retrieve.
- * @returns {Promise<any>} A promise that resolves with event details or a placeholder message.
- */
 export const getCalendarEventDetails = async (eventId) => {
-  // Placeholder: Simulate fetching Google Calendar event details
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve("Here are the details for event " + eventId + ": Title: Baklava eating session, Date: 2021-12-25, Time: 12:00 PM");
-    }, 1000);
-  });
+  try {
+    // E.g. GET /api/calendar/events/:eventId
+    const response = await fetch(`http://localhost:3001/api/calendar/events/${eventId}`, {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch event details');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching event details:', error);
+    throw error;
+  }
 };
