@@ -1,4 +1,4 @@
-# Gemini Chatbot
+# BAKLAVA Chatbot
 
 A simple chatbot project using the Gemini API along with web search and calendar integrations.
 
