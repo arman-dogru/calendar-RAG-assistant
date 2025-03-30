@@ -243,7 +243,8 @@ const workTasks = async (tasks) => {
           break;
         }
         case "updateEvent": {
-          if (!parameters.eventId && parameters.title) {
+          // If the provided eventId is not in knownEventsMap, try to resolve it using the title.
+          if (!knownEventsMap[parameters.eventId] && parameters.title) {
             const lowerTitle = parameters.title.toLowerCase();
             for (const [evtId, details] of Object.entries(knownEventsMap)) {
               if (details.summary.toLowerCase().includes(lowerTitle)) {
@@ -252,16 +253,20 @@ const workTasks = async (tasks) => {
               }
             }
           }
+          // If we still don't have a valid eventId, throw an error.
+          if (!parameters.eventId) {
+            throw new Error("No valid event found to update.");
+          }
           // Retrieve the existing event to fill missing details
           const existingEvent = await getCalendarEventDetails(parameters.eventId);
           let finalTitle = parameters.title || existingEvent.summary || "Untitled event";
-          let finalDate  = parameters.date || (existingEvent.start?.dateTime ? existingEvent.start.dateTime.split("T")[0] : "2025-01-01");
-          let finalTime  = parameters.time;
+          let finalDate = parameters.date || (existingEvent.start?.dateTime ? existingEvent.start.dateTime.split("T")[0] : "2025-01-01");
+          let finalTime = parameters.time;
           if (!finalTime) {
             const existingStartDT = existingEvent.start?.dateTime;
             if (existingStartDT) {
-              const timePart = existingStartDT.split("T")[1]; // e.g., "17:00:00-07:00"
-              finalTime = timePart.slice(0,5); // e.g., "17:00"
+              const timePart = existingStartDT.split("T")[1];
+              finalTime = timePart.slice(0, 5);
             } else {
               finalTime = "09:00";
             }
@@ -270,6 +275,7 @@ const workTasks = async (tasks) => {
           resultsLog.push(`Updated event ${parameters.eventId} → summary "${finalTitle}", date ${finalDate} time ${finalTime}: ${result}`);
           break;
         }
+        
         case "getEvents": {
           const events = await getCalendarEvents();
           resultsLog.push(`Fetched calendar events: ${JSON.stringify(events)}`);
@@ -329,7 +335,26 @@ const workTasks = async (tasks) => {
  * 4. Generates the final reply.
  */
 export const sendMessageToBaklava = async (chatHistory, newMessage) => {
+  
   try {
+    // Update knownEventsMap with the current calendar events
+    const events = await getCalendarEvents();
+    knownEventsMap = {};
+    let eventIndex = 1;
+    for (const evt of events) {
+      const eventId = evt.id;
+      const summary = evt.summary || "Untitled event";
+      const start = evt.start?.dateTime || evt.start?.date;
+      const end = evt.end?.dateTime || evt.end?.date;
+      knownEventsMap[eventId] = {
+        summary,
+        startTime: start,
+        endTime: end,
+        userFriendlyIndex: eventIndex,
+      };
+      eventIndex++;
+    }
+
     const basePrompt = buildPromptFromHistory(chatHistory, newMessage);
     console.log("Prompt to Gemini (base, for final answer):", basePrompt);
 
