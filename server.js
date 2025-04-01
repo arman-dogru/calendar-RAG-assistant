@@ -80,11 +80,11 @@ app.post('/api/calendar/events', async (req, res) => {
       summary,
       start: {
         dateTime: startDateTime,
-        timeZone: 'America/Los_Angeles'  // <- or whichever time zone you want
+        timeZone: 'America/Toronto'
       },
       end: {
         dateTime: endDateTime,
-        timeZone: 'America/Los_Angeles'
+        timeZone: 'America/Toronto'
       }
     };
 

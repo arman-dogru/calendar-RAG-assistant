@@ -93,8 +93,9 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
     │   ├── googleCalendarAPI.js
     │   └── webSearchAPI.js
     ├── components
+    │   ├── CalendarView.js
     │   ├── Chatbot.js
-    │   └── Login.js
+    │   └── VoiceMode.js
     ├── context
     │   └── ChatContext.js
     ├── index.css
@@ -103,5 +104,6 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
     ├── reportWebVitals.js
     ├── setupTests.js
     └── styles
+        ├── CalendarView.css
         └── Chatbot.css
 ```

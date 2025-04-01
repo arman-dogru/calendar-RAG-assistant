@@ -210,8 +210,9 @@ Return only valid JSON. Nothing else.
  * @param {Array<Object>} tasks - List of tasks specifying function and parameters
  * @returns {Promise<string>} - A summary text of the actions taken and their results
  */
-const workTasks = async (tasks) => {
+const workTasks = async (tasks, onCalendarUpdate) => {
   let resultsLog = [];
+  let calendarUpdated = false; // Flag to indicate if any calendar function was executed
 
   for (const task of tasks) {
     const { function: funcName, parameters } = task;
@@ -221,13 +222,14 @@ const workTasks = async (tasks) => {
           const { title, date, time } = parameters;
           const result = await createCalendarEvent(title, date, time);
           resultsLog.push(`Created event "${title}" on ${date} at ${time}: ${JSON.stringify(result)}`);
+          calendarUpdated = true;
           break;
         }
         case "deleteEvent": {
           let { eventId, title } = parameters;
           if (!eventId && title) {
             const lowerTitle = title.toLowerCase();
-            // Iterate through the knownEventsMap to find a match
+            // Iterate through knownEventsMap to find a match
             for (const [evtId, details] of Object.entries(knownEventsMap)) {
               if (details.summary.toLowerCase().includes(lowerTitle)) {
                 eventId = evtId;
@@ -240,10 +242,11 @@ const workTasks = async (tasks) => {
           }
           const result = await deleteCalendarEvent(eventId);
           resultsLog.push(`Deleted event ${eventId}: ${result}`);
+          calendarUpdated = true;
           break;
         }
         case "updateEvent": {
-          // If the provided eventId is not in knownEventsMap, try to resolve it using the title.
+          // Resolve eventId using the title if not provided
           if (!knownEventsMap[parameters.eventId] && parameters.title) {
             const lowerTitle = parameters.title.toLowerCase();
             for (const [evtId, details] of Object.entries(knownEventsMap)) {
@@ -253,7 +256,6 @@ const workTasks = async (tasks) => {
               }
             }
           }
-          // If we still don't have a valid eventId, throw an error.
           if (!parameters.eventId) {
             throw new Error("No valid event found to update.");
           }
@@ -273,9 +275,9 @@ const workTasks = async (tasks) => {
           }
           const result = await updateCalendarEvent(parameters.eventId, finalTitle, finalDate, finalTime);
           resultsLog.push(`Updated event ${parameters.eventId} → summary "${finalTitle}", date ${finalDate} time ${finalTime}: ${result}`);
+          calendarUpdated = true;
           break;
         }
-        
         case "getEvents": {
           const events = await getCalendarEvents();
           resultsLog.push(`Fetched calendar events: ${JSON.stringify(events)}`);
@@ -296,6 +298,7 @@ const workTasks = async (tasks) => {
             };
             eventIndex++;
           }
+          calendarUpdated = true;
           break;
         }
         case "getEventDetails": {
@@ -324,8 +327,14 @@ const workTasks = async (tasks) => {
     }
   }
 
+  // Call the refresh callback once after all tasks if any calendar update occurred.
+  if (calendarUpdated && onCalendarUpdate) {
+    onCalendarUpdate();
+  }
+
   return resultsLog.join("\n");
 };
+
 
 /**
  * Main function to handle the conversation with Baklava Bot:
@@ -334,7 +343,7 @@ const workTasks = async (tasks) => {
  * 3. Executes tasks.
  * 4. Generates the final reply.
  */
-export const sendMessageToBaklava = async (chatHistory, newMessage) => {
+export const sendMessageToBaklava = async (chatHistory, newMessage, onCalendarUpdate) => {
   
   try {
     // Update knownEventsMap with the current calendar events
@@ -365,7 +374,7 @@ export const sendMessageToBaklava = async (chatHistory, newMessage) => {
     conversationContext += `user: ${newMessage}\n`;
 
     const { tasks } = await detectIntent(newMessage, conversationContext);
-    const taskResults = await workTasks(tasks);
+    const taskResults = await workTasks(tasks, onCalendarUpdate);
     console.log("Tasks results:\n", taskResults);
 
     const finalPrompt = `

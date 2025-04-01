@@ -1,0 +1,31 @@
+/* src/styles/CalendarView.css */
+
+.calendar-view {
+  width: 350px;                  /* Fixed or percentage width to keep it neat */
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+  padding: 16px;
+}
+
+.calendar-view h2 {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.calendar-view ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.calendar-view li {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.calendar-view li:last-child {
+  border-bottom: none;
+}

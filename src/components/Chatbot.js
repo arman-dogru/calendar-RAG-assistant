@@ -5,7 +5,7 @@ import { ChatContext } from '../context/ChatContext';
 import VoiceMode from './VoiceMode';
 import '../styles/Chatbot.css';
 
-const Chatbot = () => {
+const Chatbot = ({ refreshCalendar }) => {
   const [input, setInput] = useState('');
   const { chatHistory, addMessage } = useContext(ChatContext);
   const [loading, setLoading] = useState(false);
@@ -35,8 +35,8 @@ const Chatbot = () => {
     addMessage(userMessage);
     setLoading(true);
 
-    // Call the Gemini API with the full chat history and new input
-    const response = await sendMessageToBaklava(chatHistory, userInput);
+    // Pass the refreshCalendar callback so that any calendar update will trigger a refresh.
+    const response = await sendMessageToBaklava(chatHistory, userInput, refreshCalendar);
     const botMessage = { sender: 'bot', text: response };
     addMessage(botMessage);
 
