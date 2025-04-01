@@ -6,6 +6,10 @@ A simple chatbot project using the Gemini API along with web search and calendar
 
 In the project directory, you can run:
 
+### `node server.js`
+
+Starts the server for the app to make API calls from
+
 ### `npm start`
 
 Runs the app in the development mode.\
